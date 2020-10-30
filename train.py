@@ -29,10 +29,7 @@ def read_data(mode='train'):
     for text in tqdm.tqdm(texts,desc='loading '+file_name):
         queries.append(text[2])
         replies.append(text[3])
-        if mode=='train':
-            labels.append(text[4])
-        else:
-            labels.append(0)
+        labels.append(text[4])
     return queries,replies,labels
 
 
@@ -79,7 +76,7 @@ class CLASSIFIER:
                 batch_x=batch_x[:,:batch_max_length].to(self.device)
                 batch_mask=batch_mask[:,:batch_max_length].to(self.device)
 
-                batch_pred = self.model(batch_x,batch_mask.byte())[0].cpu()
+                batch_pred = self.model(batch_x,batch_mask.byte()).cpu()
                 batch_output = batch_pred.clone()
                 batch_pred = F.softmax(batch_pred).numpy()
                 batch_probs = np.max(batch_pred, axis=1)
