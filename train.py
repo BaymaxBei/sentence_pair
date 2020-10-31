@@ -20,7 +20,7 @@ random.seed(8)
 
 def read_data(mode='train'):
     file_name=f'./data/process_data/train.{mode}.tsv'
-    queries, replies,labels=[],[]
+    queries, replies,labels=[],[],[]
     texts=[]
     with open(file_name,encoding='utf-8') as f:
         f_csv=csv.reader(f, delimiter='\t')
@@ -29,7 +29,7 @@ def read_data(mode='train'):
     for text in tqdm.tqdm(texts,desc='loading '+file_name):
         queries.append(text[2])
         replies.append(text[3])
-        labels.append(text[4])
+        labels.append(int(text[4]))
     return queries,replies,labels
 
 
@@ -42,7 +42,7 @@ class Dataset(torch.utils.data.Dataset):
         if mode=='train':
             self.queries, self.replies, self.labels=read_data(mode='train')
         else:
-            self.queries, self.replies, self.labels=read_data(mode='test')
+            self.queries, self.replies, self.labels=read_data(mode='dev')
 
     def __getitem__(self,index):
         token=self.tokenizer.encode(self.queries[index], self.replies[index])
@@ -76,14 +76,12 @@ class CLASSIFIER:
                 batch_x=batch_x[:,:batch_max_length].to(self.device)
                 batch_mask=batch_mask[:,:batch_max_length].to(self.device)
 
-                batch_pred = self.model(batch_x,batch_mask.byte()).cpu()
-                batch_output = batch_pred.clone()
-                batch_pred = F.softmax(batch_pred).numpy()
-                batch_probs = np.max(batch_pred, axis=1)
-                batch_pred = np.argmax(batch_pred, axis=1)
+                batch_output = self.model(batch_x,batch_mask.byte()).cpu()
+                loss += F.binary_cross_entropy_with_logits(batch_output, batch_y).item()
+                batch_probs = batch_output.sigmoid().numpy()
+                batch_pred = [1 if i>0.5 else 0 for i in batch_probs]
                 pred = np.append(pred, batch_pred)
                 probs = np.append(probs, batch_probs)
-                loss += F.cross_entropy(batch_output, batch_y).item()
         loss /= step+1
         self.model.train()
         precision = precision_score(y_true=y, y_pred=pred)
@@ -107,13 +105,11 @@ class CLASSIFIER:
                 batch_x=batch_x[:,:batch_max_length].to(self.device)
                 batch_mask=batch_mask[:,:batch_max_length].to(self.device)
 
-                batch_pred = self.model(batch_x,batch_mask.byte()).cpu()
-                batch_pred = F.softmax(batch_pred, dim=-1).numpy()
-                batch_probs = np.max(batch_pred, axis=1)
-                batch_pred = np.argmax(batch_pred, axis=1)
+                batch_output = self.model(batch_x,batch_mask.byte()).cpu()
+                batch_probs = batch_output.sigmoid().numpy()
+                batch_pred = [1 if i>0.5 else 0 for i in batch_probs]
                 pred = np.append(pred, batch_pred)
                 probs = np.append(probs, batch_probs)
-        self.model.train()
         precision = precision_score(y_true=y, y_pred=pred)
         recall = recall_score(y_true=y, y_pred=pred)
         f1 = f1_score(y_true=y, y_pred=pred)
@@ -121,7 +117,7 @@ class CLASSIFIER:
         print('precision: {}\nrecall: {}\nf1 score: {}'.format(precision, recall, f1))
         return pred, probs
 
-    def train(self,check_point='',epochs=10,batch_size=64):
+    def train(self,check_point='',epochs=10,batch_size=16):
         loader_train=torch.utils.data.DataLoader(dataset=Dataset('train'),batch_size=batch_size,shuffle=True,num_workers=0)
         loader_test=torch.utils.data.DataLoader(dataset=Dataset('test'),batch_size=128,shuffle=False,num_workers=0)
 
@@ -145,7 +141,7 @@ class CLASSIFIER:
                 batch_mask=batch_mask[:,:batch_max_length].to(self.device)
                 
                 batch_pred=self.model(batch_x,batch_mask.byte())
-                loss = F.cross_entropy(batch_pred[0], batch_y)
+                loss = F.binary_cross_entropy_with_logits(batch_pred, batch_y)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -184,7 +180,7 @@ def predict_analysis(check_point, result_file):
             texts.append(line)
     with open(result_file, 'w', encoding='utf-8') as writefile:
         for index, line in enumerate(texts):
-            writefile.write('{}\t{}\t{}\t{}\n'.format(labels[int(pred[index])], probs[index], line[0], line[1]))
+            writefile.write('{}\t{}\t{}\t{}\n'.format(int(pred[index]), probs[index], line[0], line[1]))
 
 if __name__ == "__main__":
     config_roberta = BertConfig.from_pretrained('model/RoBERTa/config.json')

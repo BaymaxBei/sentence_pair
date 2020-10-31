@@ -43,9 +43,40 @@ def split_data(datafile, trainfile, devfile):
             devf.write(line)
     
 
+def data_analysis(datafile, savefile):
+    data = pd.read_csv(datafile, sep='\t', header=None, names=['query_id', 'reply_id', 'query', 'reply', 'label'])
+    print(data[:5])
+    data_group = data.groupby(by=['label']).count()
+    print(data_group)
+    pd.DataFrame(data_group).to_csv(savefile)
+
+
+def data_balance(datafile, savefile):
+    pos_data = []
+    neg_data = []
+    with open(datafile, encoding='utf-8') as dataf:
+        for line in dataf:
+            data_i = line.strip('\n').split('\t')
+            if data_i[-1]=='1':
+                pos_data.append(line)
+            else:
+                neg_data.append(line)
+    
+    for i in range(2):
+        pos_data.extend(pos_data)
+    print(len(pos_data))
+    print(len(neg_data))
+    with open(savefile, 'w', encoding='utf-8') as f:
+        for line in pos_data:
+            f.write(line)
+        for line in neg_data:
+            f.write(line)
+
 
 
 if __name__ == '__main__':
     # data_format(queryfile='data/train/train.query.tsv', replyfile='data/train/train.reply.tsv', savefile='data/process_data/train.tsv')
     # data_format(queryfile='data/test/test.query.tsv', replyfile='data/test/test.reply.tsv', savefile='data/process_data/test.tsv', mode='test')
-    split_data(datafile='data/process_data/train.tsv', trainfile='data/process_data/train.train.tsv', devfile='data/process_data/train.dev.tsv')
+    # split_data(datafile='data/process_data/train.tsv', trainfile='data/process_data/train.train.tsv', devfile='data/process_data/train.dev.tsv')
+    # data_analysis(datafile='data/process_data/train.train.tsv', savefile='data/process_data/train.train_analysis.txt')
+    data_balance(datafile='data/process_data/train.train.tsv', savefile='data/process_data/train.train_balance.tsv')

@@ -12,7 +12,7 @@ class RobertaModel(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
         self.roberta = transformers.BertModel(config)
-        self.fc = torch.nn.Linear(config.hidden_size, 2)
+        self.fc = torch.nn.Linear(config.hidden_size, 1)
 
     def forward(self, hidden_states, attention_mask):
         output = self.roberta(hidden_states, attention_mask)
