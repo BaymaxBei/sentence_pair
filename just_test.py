@@ -30,16 +30,17 @@ import numpy as np
 # print(loss1, loss2, loss3)
 
 #### binary classify loss
-# np.random.seed(8)
-# x = torch.from_numpy(np.random.randn(5,1))
-# y = torch.from_numpy(np.ones((5,1)))
+np.random.seed(8)
+x = torch.from_numpy(np.random.randn(5,1)).view(5,)
+y = torch.from_numpy(np.ones((5,)))
 # y2 = torch.from_numpy(np.zeros((5,1)))
+print(x, '\n', y)
 # print(x, '\n', y, '\n', y2)
-# loss1 = nn.functional.binary_cross_entropy_with_logits(x, y)
+loss1 = nn.functional.binary_cross_entropy_with_logits(x, y.type_as(x))
 # x_sigmoid = x.sigmoid()
 # print(x_sigmoid)
 # loss2 = nn.functional.binary_cross_entropy(x_sigmoid, y2)
-# print(loss1)
+print(loss1)
 # print(loss2)
 ####--------------------------------####
 
@@ -50,6 +51,3 @@ import numpy as np
 # x = [1 if i>0.5 else 0 for i in x]
 # print(x)
 
-x = np.array([1,2,3])
-x = x*4
-print(x)
