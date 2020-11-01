@@ -3,8 +3,8 @@ import torch
 from transformers import BertTokenizer, BertModel, BertConfig, BartForSequenceClassification
 
 
-model = BertModel.from_pretrained('hfl/chinese-roberta-wwm-ext')
-torch.save(model, 'model/RoBERTa/chinese-roberta-wwm-ext.bin')
+# model = BertModel.from_pretrained('hfl/chinese-roberta-wwm-ext')
+# torch.save(model, 'model/RoBERTa/chinese-roberta-wwm-ext.bin')
 
 # RobertaModel = BertModel.from_pretrained('model/RoBERTa/chinese-roberta-wwm-ext.bin')
 

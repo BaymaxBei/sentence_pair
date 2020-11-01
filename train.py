@@ -4,6 +4,7 @@ __date__='2020/10/29'
 import os
 import csv
 import tqdm
+import time
 import random
 import numpy as np
 from sklearn.metrics import precision_score, recall_score, f1_score
@@ -15,34 +16,46 @@ from transformers import BertConfig, BertForSequenceClassification
 from model_bert import RobertaModel
 
 
-random.seed(8)
+def setup_seed(seed):
+     torch.manual_seed(seed)
+     torch.cuda.manual_seed_all(seed)
+     np.random.seed(seed)
+     random.seed(seed)
+     torch.backends.cudnn.deterministic = True
 
+setup_seed(8)
+
+filemap = {
+    'train': './data/process_data/train.train_raw.tsv',
+    'dev': './data/process_data/train.dev.tsv',
+    'test': './data/process_data/test.tsv'
+}
 
 def read_data(mode='train'):
-    file_name=f'./data/process_data/train.{mode}.tsv'
+    filename = filemap[mode]
     queries, replies,labels=[],[],[]
     texts=[]
-    with open(file_name,encoding='utf-8') as f:
+    with open(filename,encoding='utf-8') as f:
         f_csv=csv.reader(f, delimiter='\t')
         for line in f_csv:
             texts.append(line)
-    for text in tqdm.tqdm(texts,desc='loading '+file_name):
+    for text in tqdm.tqdm(texts,desc='loading '+filename):
         queries.append(text[2])
         replies.append(text[3])
-        labels.append(int(text[4]))
+        if mode=='test':
+            labels.append(0)
+        else:
+            labels.append(int(text[4]))
     return queries,replies,labels
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self,mode='train'):
+    def __init__(self,mode):
         self.tokenizer=tokenizers.BertWordPieceTokenizer("./model/RoBERTa/vocab.txt")
         self.tokenizer.enable_padding(length=64)
         self.tokenizer.enable_truncation(max_length=64)
 
-        if mode=='train':
-            self.queries, self.replies, self.labels=read_data(mode='train')
-        else:
-            self.queries, self.replies, self.labels=read_data(mode='dev')
+        self.queries, self.replies, self.labels=read_data(mode=mode)
 
     def __getitem__(self,index):
         token=self.tokenizer.encode(self.queries[index], self.replies[index])
@@ -67,7 +80,6 @@ class CLASSIFIER:
         self.model.eval()
         y = np.array([])
         pred = np.array([])
-        probs = np.array([])
         loss = 0
         with torch.no_grad():
             for step, (batch_x,batch_y,batch_mask) in enumerate(loader_test):
@@ -76,12 +88,11 @@ class CLASSIFIER:
                 batch_x=batch_x[:,:batch_max_length].to(self.device)
                 batch_mask=batch_mask[:,:batch_max_length].to(self.device)
 
-                batch_output = self.model(batch_x,batch_mask.byte()).cpu()
-                loss += F.binary_cross_entropy_with_logits(batch_output, batch_y).item()
+                batch_output = self.model(batch_x,batch_mask.byte()).cpu().flatten()
+                loss += F.binary_cross_entropy_with_logits(batch_output, batch_y.type_as(batch_output)).item()
                 batch_probs = batch_output.sigmoid().numpy()
                 batch_pred = [1 if i>0.5 else 0 for i in batch_probs]
                 pred = np.append(pred, batch_pred)
-                probs = np.append(probs, batch_probs)
         loss /= step+1
         self.model.train()
         precision = precision_score(y_true=y, y_pred=pred)
@@ -90,8 +101,8 @@ class CLASSIFIER:
         return precision,recall,f1,loss
 
 
-    def predict(self, check_point):
-        loader_test=torch.utils.data.DataLoader(dataset=Dataset('train'),batch_size=64,shuffle=False,num_workers=0)
+    def predict(self, check_point, mode):
+        loader_test=torch.utils.data.DataLoader(dataset=Dataset(mode),batch_size=128,shuffle=False,num_workers=0)
         pth=torch.load(check_point,map_location='cpu')
         self.model.load_state_dict(pth['weights'])
         self.model.eval()
@@ -105,7 +116,7 @@ class CLASSIFIER:
                 batch_x=batch_x[:,:batch_max_length].to(self.device)
                 batch_mask=batch_mask[:,:batch_max_length].to(self.device)
 
-                batch_output = self.model(batch_x,batch_mask.byte()).cpu()
+                batch_output = self.model(batch_x,batch_mask.byte()).cpu().flatten()
                 batch_probs = batch_output.sigmoid().numpy()
                 batch_pred = [1 if i>0.5 else 0 for i in batch_probs]
                 pred = np.append(pred, batch_pred)
@@ -115,13 +126,13 @@ class CLASSIFIER:
         f1 = f1_score(y_true=y, y_pred=pred)
 
         print('precision: {}\nrecall: {}\nf1 score: {}'.format(precision, recall, f1))
-        return pred, probs
+        return pred, probs, precision, recall, f1
 
     def train(self,check_point='',epochs=10,batch_size=16):
         loader_train=torch.utils.data.DataLoader(dataset=Dataset('train'),batch_size=batch_size,shuffle=True,num_workers=0)
-        loader_test=torch.utils.data.DataLoader(dataset=Dataset('test'),batch_size=128,shuffle=False,num_workers=0)
+        loader_test=torch.utils.data.DataLoader(dataset=Dataset('dev'),batch_size=128,shuffle=False,num_workers=0)
 
-        optimizer=torch.optim.AdamW(self.model.parameters(),lr=1e-4)
+        optimizer=torch.optim.AdamW(self.model.parameters(),lr=1e-5)
         scheduler=torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=10,eta_min=1e-8)
         
         if check_point !='':
@@ -140,15 +151,15 @@ class CLASSIFIER:
                 batch_y=batch_y.to(self.device)
                 batch_mask=batch_mask[:,:batch_max_length].to(self.device)
                 
-                batch_pred=self.model(batch_x,batch_mask.byte())
-                loss = F.binary_cross_entropy_with_logits(batch_pred, batch_y)
+                batch_pred=self.model(batch_x,batch_mask.byte()).flatten()
+                loss = F.binary_cross_entropy_with_logits(batch_pred, batch_y.type_as(batch_pred))
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
                 loader_t.set_postfix(training="loss:{:.6f}".format(loss.item()))
 
-                if step%100==0:
+                if step%500==0:
                     pth={'weights':self.model.state_dict(),'optimizer':optimizer.state_dict()}
 
                     # if torch.os.path.exists(model_save_names[0]): torch.os.remove(model_save_names[0])
@@ -159,7 +170,7 @@ class CLASSIFIER:
                     precision,recall,f1, loss=self.val(loader_test)
                     print('precision: {:.4f}\trecall: {:.4f}\tf1_score: {:.4f}\tloss: {:.4f}'.format(precision, recall, f1, loss))
 
-                    if f1>0.5 and f1>f1_scores[-1]:
+                    if f1>0.6 and f1>f1_scores[-1]:
                         f1_scores.append(f1)
                         # if torch.os.path.exists('f1_score_{:.4f}.pth'.format(f1_scores[0])): torch.os.remove('f1_score_{:.4f}.pth'.format(f1_scores[0]))
                         torch.save(pth,'roberta_cls_checkpoint/epoch{}_batch{}_f1_score_{:.4f}.pth'.format(epoch, step, f1_scores[-1]))
@@ -168,29 +179,36 @@ class CLASSIFIER:
             scheduler.step()
 
 
-def predict_analysis(check_point, result_file):
+def predict_analysis(check_point, mode, result_file, scorefile):
     config_roberta = BertConfig.from_pretrained('model/RoBERTa/config.json')
-    print(config_roberta.num_labels)
     classifier=CLASSIFIER(config=config_roberta, load_pretrained=True)
-    pred, probs = classifier.predict(check_point)
+    pred, probs, precision, recall, f1 = classifier.predict(check_point=check_point, mode=mode)
     texts=[]
-    with open('data/test.tsv',encoding='utf-8') as f:
+    filename = filemap[mode]
+    with open(filename,encoding='utf-8') as f:
         f_csv=csv.reader(f, delimiter='\t')
         for line in f_csv:
             texts.append(line)
     with open(result_file, 'w', encoding='utf-8') as writefile:
         for index, line in enumerate(texts):
-            writefile.write('{}\t{}\t{}\t{}\n'.format(int(pred[index]), probs[index], line[0], line[1]))
+            true_label = 0 if mode=='test' else line[4]
+            writefile.write('{}\t{}\t{}\t{}\t{}\n'.format(int(pred[index]), probs[index], true_label, line[2], line[3]))
+    with open(scorefile, 'w', encoding='utf-8') as f:
+        f.write('precision: {}\nrecall: {}\nf1 score: {}'.format(precision, recall, f1))
+
 
 if __name__ == "__main__":
     config_roberta = BertConfig.from_pretrained('model/RoBERTa/config.json')
     classifier=CLASSIFIER(config=config_roberta, load_pretrained=True)
-    classifier.train()
+    # classifier.train()
 
-    # for i in range(2, 6):
-    #     print('------------- epoch{} ------------'.format(i))
-    # filename = 'roberta_checkpoint'
-    # for file in  os.listdir(filename):
-    #     filepath = os.path.join(filename, file)
-    #     print(filepath)
-    #     predict_analysis(check_point=filepath, result_file='{}/train_{}_res.tsv'.format(filename, file.split('.')[0]))
+    filename = 'roberta_cls_checkpoint'
+    mode = 'test'
+    for file in  os.listdir(filename):
+        if file.endswith('.pth'):
+            filepath = os.path.join(filename, file)
+            print(filepath)
+            time_start = time.perf_counter()
+            predict_analysis(check_point=filepath, mode=mode, result_file='{}/predict_result/{}_{}_res.tsv'.format(filename, mode, file), scorefile='{}/predict_result/{}_{}_score.txt'.format(filename, mode, file))
+            time_end = time.perf_counter()
+            print('time: {}s'.format(time_end - time_start))
