@@ -198,18 +198,18 @@ def predict_analysis(check_point, mode, result_file, scorefile):
 
 
 if __name__ == "__main__":
-    os.mkdir('roberta_cls_checkpoint')
+    # os.mkdir('roberta_cls_checkpoint')
     config_roberta = BertConfig.from_pretrained('model/RoBERTa/config.json')
     classifier=CLASSIFIER(config=config_roberta, load_pretrained=True)
-    classifier.train()
+    # classifier.train()
 
-    # filename = 'roberta_cls_checkpoint'
-    # mode = 'test'
-    # for file in  os.listdir(filename):
-    #     if file.endswith('.pth'):
-    #         filepath = os.path.join(filename, file)
-    #         print(filepath)
-    #         time_start = time.perf_counter()
-    #         predict_analysis(check_point=filepath, mode=mode, result_file='{}/predict_result/{}_{}_res.tsv'.format(filename, mode, file), scorefile='{}/predict_result/{}_{}_score.txt'.format(filename, mode, file))
-    #         time_end = time.perf_counter()
-    #         print('time: {}s'.format(time_end - time_start))
+    filename = 'roberta_cls_checkpoint'
+    mode = 'test'
+    for file in  os.listdir(filename):
+        if file.endswith('.pth'):
+            filepath = os.path.join(filename, file)
+            print(filepath)
+            time_start = time.perf_counter()
+            predict_analysis(check_point=filepath, mode=mode, result_file='{}/predict_result/{}_{}_res.tsv'.format(filename, mode, file), scorefile='{}/predict_result/{}_{}_score.txt'.format(filename, mode, file))
+            time_end = time.perf_counter()
+            print('time: {}s'.format(time_end - time_start))
