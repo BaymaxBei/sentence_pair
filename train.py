@@ -198,12 +198,13 @@ def predict_analysis(check_point, mode, result_file, scorefile):
 
 
 if __name__ == "__main__":
-    os.mkdir('roberta_cls_checkpoint')
+    filename = 'roberta_cls_checkpoint'
+    if not os.path.exists(filename):
+        os.mkdir('roberta_cls_checkpoint')
     config_roberta = BertConfig.from_pretrained('model/RoBERTa/config.json')
     classifier=CLASSIFIER(config=config_roberta, load_pretrained=True)
     classifier.train()
 
-    # filename = 'roberta_cls_checkpoint'
     # mode = 'test'
     # for file in  os.listdir(filename):
     #     if file.endswith('.pth'):

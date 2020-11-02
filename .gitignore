@@ -3,3 +3,4 @@ __pycache__/*
 .DS_Store
 roberta_cls_checkpoint/*
 model/*
+model/RoBERTa/chinese-roberta-wwm-ext.bin
